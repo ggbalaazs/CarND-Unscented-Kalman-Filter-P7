@@ -28,7 +28,10 @@ public:
   ///* state covariance matrix
   MatrixXd P_;
 
-  ///* predicted sigma points matrix
+  // augmented sigma point matrix
+  MatrixXd Xsig_aug_;
+
+  // predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
   ///* time when the state is true, in us
@@ -67,11 +70,22 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  // previous timestamp
+  long long previous_timestamp_;
+
+  // console log verbosity
+  bool verbose_;
+
+  // disable all output
+  bool quiet_;
+
+  double NIS_laser_;
+  double NIS_radar_;
 
   /**
    * Constructor
    */
-  UKF();
+  UKF(bool verbose, bool quiet, double std_a, double std_yawdd);
 
   /**
    * Destructor
@@ -102,6 +116,13 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+private:
+  void GenerateSigmaPoints(MatrixXd* Xsig_out);
+  void SigmaPointPrediction(MatrixXd* Xsig_out, const double delta_t);
+  void PredictMeanAndCovariance(VectorXd* x_out, MatrixXd* P_out);
+  void PredictLidarMeasurement(VectorXd* z_out, MatrixXd* S_out, MatrixXd* Z_out);
+  void PredictRadarMeasurement(VectorXd* z_out, MatrixXd* S_out, MatrixXd* Z_out);
 };
 
 #endif /* UKF_H */

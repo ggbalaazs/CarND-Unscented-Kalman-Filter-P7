@@ -4,6 +4,7 @@
 #include <math.h>
 #include "ukf.h"
 #include "tools.h"
+#include "boost/program_options.hpp"
 
 using namespace std;
 
@@ -26,12 +27,56 @@ std::string hasData(std::string s) {
   return "";
 }
 
-int main()
+int main(int argc, char** argv)
 {
+  namespace po = boost::program_options;
+  po::options_description desc("Options");
+  desc.add_options()
+    ("verbose,v", "verbose console output")
+    ("quiet,q", "disable console output")
+    ("std_a", po::value<double>(), "acceleration std dev")
+    ("std_yawdd", po::value<double>(), "yaw acceleration std dev");
+
+  po::variables_map vm;
+  try
+  {
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+  }
+  catch(po::error& e)
+  {
+    std::cerr << "ERROR: " << e.what() << std::endl << std::endl;
+    std::cerr << desc << std::endl;
+    return -1;
+  }
+
+  // default parameter values
+  bool verbose = false;
+  bool quiet = false;
+  double std_a = 2.0;
+  double std_yawdd = 0.4;
+
+  if (vm.count("verbose")) {
+    std::cout << "VERBOSE PRINTING" << std::endl;
+    verbose = true;
+  }
+  if (vm.count("quiet")) {
+    std::cout << "QUIET PRINTING" << std::endl;
+    quiet = true;
+  }
+  if (vm.count("std_a")) {
+    std_a = vm["std_a"].as<double>();
+    std::cout << "std_a " << std_a << std::endl;
+  }
+  if (vm.count("std_yawdd")) {
+    std_yawdd = vm["std_yawdd"].as<double>();
+    std::cout << "std_yawdd " << std_yawdd << std::endl;
+  }
+
   uWS::Hub h;
 
   // Create a Kalman Filter instance
-  UKF ukf;
+  UKF ukf(verbose, quiet, std_a, std_yawdd);
 
   // used to compute the RMSE later
   Tools tools;
@@ -48,16 +93,16 @@ int main()
 
       auto s = hasData(std::string(data));
       if (s != "") {
-      	
+
         auto j = json::parse(s);
 
         std::string event = j[0].get<std::string>();
-        
+
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          
+
           string sensor_measurment = j[1]["sensor_measurement"];
-          
+
           MeasurementPackage meas_package;
           istringstream iss(sensor_measurment);
     	  long long timestamp;
@@ -100,13 +145,13 @@ int main()
     	  iss >> vy_gt;
     	  VectorXd gt_values(4);
     	  gt_values(0) = x_gt;
-    	  gt_values(1) = y_gt; 
+    	  gt_values(1) = y_gt;
     	  gt_values(2) = vx_gt;
     	  gt_values(3) = vy_gt;
     	  ground_truth.push_back(gt_values);
-          
+
           //Call ProcessMeasurment(meas_package) for Kalman filter
-    	  ukf.ProcessMeasurement(meas_package);    	  
+    	  ukf.ProcessMeasurement(meas_package);
 
     	  //Push the current estimated x,y positon from the Kalman filter's state vector
 
@@ -124,7 +169,7 @@ int main()
     	  estimate(1) = p_y;
     	  estimate(2) = v1;
     	  estimate(3) = v2;
-    	  
+
     	  estimations.push_back(estimate);
 
     	  VectorXd RMSE = tools.CalculateRMSE(estimations, ground_truth);
@@ -138,11 +183,22 @@ int main()
           msgJson["rmse_vy"] = RMSE(3);
           auto msg = "42[\"estimate_marker\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
+          while (yaw > M_PI) yaw -= 2. * M_PI;
+          while (yaw < -M_PI) yaw += 2. * M_PI;
+          double a_gth = atan2(vy_gt, vx_gt);
+          while (a_gth > M_PI) a_gth -= 2. * M_PI;
+          while (a_gth < -M_PI) a_gth += 2. * M_PI;
+          double a_diff = yaw - a_gth;
+          while (a_diff > M_PI) a_diff -= 2. * M_PI;
+          while (a_diff < -M_PI) a_diff += 2. * M_PI;
+
+          std::cout << "Estimate:     " << p_x << "  " << p_y << "  " << v1 << "  " << v2 << std::endl;
+          std::cout << "Ground truth: " << x_gt << "  " << y_gt << "  " << vx_gt << "  " << vy_gt << std::endl << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-	  
+
         }
       } else {
-        
+
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
